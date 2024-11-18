@@ -4,95 +4,117 @@ declare(strict_types=1);
 
 namespace OllamaPress;
 
+use WP_Error;
 use WP_REST_Controller;
-
-defined('ABSPATH') || exit;
-
-/**
- * Plugin Name: OllamaPress
- * Description: A plugin to interact with Ollama's API via WordPress REST endpoints.
- * Version: 0.1.1
- * Author: Carmelo Santana
- * Author URI: https://carmelosantana.com
- */
-
-define('OLLAMA_API_URL', 'http://host.docker.internal:11434/api'); // Base URL for Ollama API
-define('OLLAMA_TIMEOUT', 300); // Timeout in seconds for API requests
 
 /**
  * Class OllamaAPIController
  *
  * Manages REST API routes for Ollama features.
  */
-class OllamaAPIController extends WP_REST_Controller
+class RestAPIController extends WP_REST_Controller
 {
+    private string $url;
+    private int $timeout;
+
+    public function __construct()
+    {
+        $this->namespace = 'ollama/v1';
+        $this->url = defined('OLLAMA_URL') ? OLLAMA_URL : get_option('ollama_url', 'http://localhost:11434/api');
+        $this->timeout = defined('OLLAMA_TIMEOUT') ? OLLAMA_TIMEOUT : (int) get_option('ollama_timeout', 300);
+    }
+
     /**
      * Register API routes.
      */
     public function register_routes(): void
     {
-        $namespace = 'ollama/v1';
-
-        register_rest_route($namespace, '/generate', [
+        register_rest_route($this->namespace, '/generate', [
             'methods' => 'POST',
             'callback' => [$this, 'generate_completion'],
-            'permission_callback' => '__return_true',
+            'permission_callback' => [$this, 'permissions_read'],
         ]);
 
-        register_rest_route($namespace, '/chat', [
+        register_rest_route($this->namespace, '/chat', [
             'methods' => 'POST',
             'callback' => [$this, 'generate_chat'],
-            'permission_callback' => '__return_true',
+            'permission_callback' => [$this, 'permissions_read'],
         ]);
 
-        register_rest_route($namespace, '/models', [
-            'methods' => 'GET',
-            'callback' => [$this, 'list_models'],
-            'permission_callback' => '__return_true',
-        ]);
-
-        register_rest_route($namespace, '/model-info', [
-            'methods' => 'POST',
-            'callback' => [$this, 'model_info'],
-            'permission_callback' => '__return_true',
-        ]);
-
-        register_rest_route($namespace, '/copy', [
-            'methods' => 'POST',
-            'callback' => [$this, 'copy_model'],
-            'permission_callback' => '__return_true',
-        ]);
-
-        register_rest_route($namespace, '/delete', [
-            'methods' => 'DELETE',
-            'callback' => [$this, 'delete_model'],
-            'permission_callback' => '__return_true',
-        ]);
-
-        register_rest_route($namespace, '/pull', [
-            'methods' => 'POST',
-            'callback' => [$this, 'pull_model'],
-            'permission_callback' => '__return_true',
-        ]);
-
-        register_rest_route($namespace, '/push', [
-            'methods' => 'POST',
-            'callback' => [$this, 'push_model'],
-            'permission_callback' => '__return_true',
-        ]);
-
-        register_rest_route($namespace, '/embed', [
+        register_rest_route($this->namespace, '/embed', [
             'methods' => 'POST',
             'callback' => [$this, 'generate_embedding'],
-            'permission_callback' => '__return_true',
+            'permission_callback' => [$this, 'permissions_read'],
         ]);
 
-        register_rest_route($namespace, '/running', [
+        register_rest_route($this->namespace, '/models', [
+            'methods' => 'GET',
+            'callback' => [$this, 'list_models'],
+            'permission_callback' => [$this, 'permissions_read'],
+        ]);
+
+        register_rest_route($this->namespace, '/create', [
+            'methods' => 'POST',
+            'callback' => [$this, 'create_model'],
+            'permission_callback' => [$this, 'permissions_manage'],
+        ]);
+
+        register_rest_route($this->namespace, '/info', [
+            'methods' => 'POST',
+            'callback' => [$this, 'model_info'],
+            'permission_callback' => [$this, 'permissions_read'],
+        ]);
+
+        register_rest_route($this->namespace, '/copy', [
+            'methods' => 'POST',
+            'callback' => [$this, 'copy_model'],
+            'permission_callback' => [$this, 'permissions_manage'],
+        ]);
+
+        register_rest_route($this->namespace, '/delete', [
+            'methods' => 'DELETE',
+            'callback' => [$this, 'delete_model'],
+            'permission_callback' => [$this, 'permissions_manage'],
+        ]);
+
+        register_rest_route($this->namespace, '/pull', [
+            'methods' => 'POST',
+            'callback' => [$this, 'pull_model'],
+            'permission_callback' => [$this, 'permissions_manage'],
+        ]);
+
+        register_rest_route($this->namespace, '/push', [
+            'methods' => 'POST',
+            'callback' => [$this, 'push_model'],
+            'permission_callback' => [$this, 'permissions_manage'],
+        ]);
+
+        register_rest_route($this->namespace, '/running', [
             'methods' => 'GET',
             'callback' => [$this, 'list_running_models'],
-            'permission_callback' => '__return_true',
+            'permission_callback' => [$this, 'permissions_read'],
         ]);
     }
+
+    /**
+     * Guest permissions.
+     */
+    public function permissions_read($request)
+    {
+        return true;
+    }
+
+    /**
+     * Check if the current user is an admin.
+     */
+    public function permissions_manage($request)
+    {
+        if (!current_user_can('manage_options')) {
+            return new WP_Error('rest_forbidden', esc_html__('You cannot access this resource.', 'ollamapress'), ['status' => 401]);
+        }
+        return true;
+    }
+
     /**
      * Handle Generate Completion request.
      */
@@ -172,7 +194,7 @@ class OllamaAPIController extends WP_REST_Controller
         }
 
         if ($messages = $request->get_param('messages')) {
-            $body['messages'] = $messages;
+            $body['messages'] = (array) $messages;
         } else {
             $body['messages'] = [['role' => 'user', 'content' => 'Hello!']]; // Default message
         }
@@ -203,6 +225,21 @@ class OllamaAPIController extends WP_REST_Controller
         return rest_ensure_response($response);
     }
 
+    /**
+     * Handle Create Model request.
+     */
+    public function create_model(\WP_REST_Request $request): \WP_REST_Response
+    {
+        $body = array_filter([
+            'name' => $request->get_param('name'),
+            'modelfile' => $request->get_param('modelfile'),
+            'stream' => $request->get_param('stream'),
+            'path' => $request->get_param('path'),
+        ]);
+
+        $response = $this->make_request('/create', $body);
+        return rest_ensure_response($response);
+    }
 
     /**
      * Handle List Models request.
@@ -289,13 +326,27 @@ class OllamaAPIController extends WP_REST_Controller
      */
     public function generate_embedding(\WP_REST_Request $request): \WP_REST_Response
     {
-        $body = [
-            'model' => (string) $request->get_param('model'),
-            'input' => (array) $request->get_param('input'),
-            'truncate' => (bool) $request->get_param('truncate', true),
-            'options' => (array) $request->get_param('options', []),
-            'keep_alive' => (string) $request->get_param('keep_alive', '5m'),
-        ];
+        $body = [];
+
+        if ($model = $request->get_param('model')) {
+            $body['model'] = (string) $model;
+        }
+
+        if ($input = $request->get_param('input')) {
+            $body['input'] = (array) $input;
+        }
+
+        if (!is_null($request->get_param('truncate'))) {
+            $body['truncate'] = (bool) $request->get_param('truncate');
+        }
+
+        if ($options = $request->get_param('options')) {
+            $body['options'] = (array) $options;
+        }
+
+        if ($keep_alive = $request->get_param('keep_alive')) {
+            $body['keep_alive'] = (string) $keep_alive;
+        }
 
         $response = $this->make_request('/embed', $body);
         return rest_ensure_response($response);
@@ -312,20 +363,15 @@ class OllamaAPIController extends WP_REST_Controller
 
     /**
      * Make a request to the Ollama API.
-     *
-     * @param string $endpoint
-     * @param array $body
-     * @param string $method
-     * @return array
      */
     private function make_request(string $endpoint, array $body = [], string $method = 'POST'): array
     {
-        $url = OLLAMA_API_URL . $endpoint;
+        $url = $this->url . $endpoint;
         $args = [
             'method' => $method,
             'headers' => ['Content-Type' => 'application/json'],
             'body' => $method === 'GET' ? null : wp_json_encode($body),
-            'timeout' => OLLAMA_TIMEOUT,
+            'timeout' => $this->timeout,
         ];
 
         $response = wp_remote_request($url, $args);
@@ -337,21 +383,6 @@ class OllamaAPIController extends WP_REST_Controller
         $body = wp_remote_retrieve_body($response);
         $data = json_decode($body, true);
 
-        if (is_null($data)) {
-            return ['error' => 'Failed to decode JSON response from Ollama API.'];
-        }
-
-        return $data;
+        return is_null($data) ? ['error' => 'Invalid API response'] : $data;
     }
 }
-
-/**
- * Initialize the OllamaPress plugin.
- */
-function ollama_press_init(): void
-{
-    $controller = new OllamaAPIController();
-    $controller->register_routes();
-}
-
-add_action('rest_api_init', __NAMESPACE__ . '\ollama_press_init');
