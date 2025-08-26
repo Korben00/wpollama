@@ -34,7 +34,7 @@ class Options
             echo '<code>' . esc_html(OLLAMA_TIMEOUT) . '</code>';
             echo '<p class="description">This value is set via <code>wp-config.php</code>.</p>';
         } else {
-            echo '<input type="number" name="ollama_timeout" value="' . esc_attr(get_option('ollama_timeout', 300)) . '" class="small-text" /> seconds';
+            echo '<input type="number" name="ollama_timeout" value="' . esc_attr(get_option('ollama_timeout', 30)) . '" class="small-text" /> seconds';
         }
         echo '</td>';
         echo '</tr>';
@@ -58,7 +58,7 @@ class Options
         }
 
         if (!defined('OLLAMA_TIMEOUT')) {
-            update_option('ollama_timeout', (int) ($_POST['ollama_timeout'] ?? 300));
+            update_option('ollama_timeout', (int) ($_POST['ollama_timeout'] ?? 30));
         }
 
         add_action('admin_notices', function () {
