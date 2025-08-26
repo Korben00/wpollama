@@ -103,6 +103,16 @@ $response = wp_remote_post(rest_url('ollama/v1/embed'), [
 ]);
 ```
 
+## Security
+
+⚠️ **Important**: This plugin exposes AI model capabilities through WordPress REST API. Please review the [SECURITY.md](SECURITY.md) file for important security considerations and best practices.
+
+Key security features:
+- User authentication required for all endpoints
+- Model whitelist system to prevent unauthorized access
+- Reduced timeouts to prevent resource abuse
+- Admin-only access for model management operations
+
 ## License
 
 This plugin is licensed under the GPL v2 or later.
