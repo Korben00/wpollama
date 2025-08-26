@@ -97,10 +97,20 @@ class RestAPIController extends WP_REST_Controller
     }
 
     /**
-     * Guest permissions.
+     * Check if user is logged in.
+     * Following WordPress security best practices.
      */
     public function permissions_read($request)
     {
+        // Require user to be logged in
+        if (!is_user_logged_in()) {
+            return new WP_Error(
+                'rest_forbidden',
+                esc_html__('You must be logged in to access this resource.', 'ollamapress'),
+                ['status' => 401]
+            );
+        }
+        
         return true;
     }
 
