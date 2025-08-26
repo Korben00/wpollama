@@ -168,32 +168,52 @@ class RestAPIController extends WP_REST_Controller
      */
     private function is_internal_request($request): bool
     {
+        // Debug logging
+        error_log('WPOllama - Checking if internal request...');
+        error_log('WPOllama - REST_REQUEST defined: ' . (defined('REST_REQUEST') ? 'yes' : 'no'));
+        error_log('WPOllama - REQUEST_METHOD: ' . ($_SERVER['REQUEST_METHOD'] ?? 'not set'));
+        error_log('WPOllama - HTTP_HOST: ' . ($_SERVER['HTTP_HOST'] ?? 'not set'));
+        
         // Method 1: Check if request is made via rest_do_request() (internal)
-        if (defined('REST_REQUEST') && REST_REQUEST === true && !isset($_SERVER['HTTP_HOST'])) {
-            return true;
-        }
-        
-        // Method 2: Check for internal nonce or specific headers
-        $nonce = $request->get_header('X-WP-Nonce');
-        if ($nonce && wp_verify_nonce($nonce, 'wp_rest')) {
-            return true;
-        }
-        
-        // Method 3: Check if called from within WordPress execution context
-        // without HTTP request (typical for rest_do_request())
-        if (empty($_SERVER['REQUEST_METHOD']) && defined('ABSPATH')) {
-            return true;
-        }
-        
-        // Method 4: Check for registered plugin service
-        $plugin_header = $request->get_header('X-WPOllama-Plugin');
-        if ($plugin_header) {
-            $manager = \OllamaPress\PluginManager::getInstance();
-            if ($manager->hasService($plugin_header)) {
+        // rest_do_request sets REST_REQUEST but doesn't set typical HTTP vars
+        if (defined('REST_REQUEST') && REST_REQUEST === true) {
+            // If no HTTP_HOST or REQUEST_METHOD, it's likely internal
+            if (empty($_SERVER['HTTP_HOST']) || empty($_SERVER['REQUEST_METHOD'])) {
+                error_log('WPOllama - Detected as internal via REST_REQUEST without HTTP vars');
                 return true;
             }
         }
         
+        // Method 2: Check for WordPress plugin header
+        $plugin_header = $request->get_header('X-WPOllama-Plugin');
+        if ($plugin_header) {
+            error_log('WPOllama - Plugin header found: ' . $plugin_header);
+            // For now, accept any plugin that identifies itself
+            // Later we can check against registered plugins
+            return true;
+        }
+        
+        // Method 3: Check for valid WordPress nonce (internal AJAX)
+        $nonce = $request->get_header('X-WP-Nonce');
+        if ($nonce && wp_verify_nonce($nonce, 'wp_rest')) {
+            error_log('WPOllama - Valid WP nonce found');
+            return true;
+        }
+        
+        // Method 4: Check if this is called from admin-ajax.php
+        if (defined('DOING_AJAX') && DOING_AJAX) {
+            error_log('WPOllama - DOING_AJAX detected');
+            return true;
+        }
+        
+        // Method 5: Check for internal IP or localhost
+        $remote_addr = $_SERVER['REMOTE_ADDR'] ?? '';
+        if (in_array($remote_addr, ['127.0.0.1', '::1'], true)) {
+            error_log('WPOllama - Localhost request detected');
+            return true;
+        }
+        
+        error_log('WPOllama - Not detected as internal request');
         return false;
     }
 
