@@ -17,6 +17,7 @@ defined('ABSPATH') || exit;
 /**
  * Include the necessary files.
  */
+require_once __DIR__ . '/src/OllamaClient.php';
 require_once __DIR__ . '/src/Api.php';
 require_once __DIR__ . '/src/PluginManager.php';
 require_once __DIR__ . '/src/ExtensibleApi.php';

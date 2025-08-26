@@ -30,7 +30,7 @@ class RestAPIController extends WP_REST_Controller
         $this->timeout = defined('OLLAMA_TIMEOUT') ? OLLAMA_TIMEOUT : (int) get_option('ollama_timeout', 30);
         
         // Default allowed models - can be filtered by themes/plugins
-        $default_models = ['llama3.2', 'llama2', 'codellama', 'mistral', 'phi', 'gemma'];
+        $default_models = ['llama3.2', 'llama3.2:latest', 'llama2', 'codellama', 'mistral', 'phi', 'gemma', 'qwen3:latest'];
         $this->allowed_models = apply_filters('ollamapress_allowed_models', $default_models);
     }
 
