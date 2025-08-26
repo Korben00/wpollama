@@ -112,15 +112,22 @@ class RestAPIController extends WP_REST_Controller
      */
     public function permissions_read($request)
     {
-        // Check if this is an internal WordPress request (from another plugin)
-        $is_internal = $this->is_internal_request($request);
-        
-        if ($is_internal) {
-            // Always allow internal WordPress plugin requests
+        // Method 1: Check if user is authenticated (covers WordPress admin, AJAX, REST with auth)
+        // In REST context, this works if proper authentication is set
+        if (is_user_logged_in()) {
+            error_log('WPOllama - User is logged in (ID: ' . get_current_user_id() . '), allowing access');
             return true;
         }
         
-        // For external requests, check if external access is allowed
+        // Method 2: Check if this is an internal WordPress request
+        $is_internal = $this->is_internal_request($request);
+        
+        if ($is_internal) {
+            error_log('WPOllama - Internal request detected, allowing access');
+            return true;
+        }
+        
+        // Method 3: For external requests, check if external access is allowed
         $allow_external = get_option('ollama_allow_external_access', false);
         
         if (!$allow_external) {
@@ -170,27 +177,33 @@ class RestAPIController extends WP_REST_Controller
     {
         // Debug logging
         error_log('WPOllama - Checking if internal request...');
-        error_log('WPOllama - REST_REQUEST defined: ' . (defined('REST_REQUEST') ? 'yes' : 'no'));
-        error_log('WPOllama - REQUEST_METHOD: ' . ($_SERVER['REQUEST_METHOD'] ?? 'not set'));
-        error_log('WPOllama - HTTP_HOST: ' . ($_SERVER['HTTP_HOST'] ?? 'not set'));
         
-        // Method 1: Check if request is made via rest_do_request() (internal)
-        // rest_do_request sets REST_REQUEST but doesn't set typical HTTP vars
-        if (defined('REST_REQUEST') && REST_REQUEST === true) {
-            // If no HTTP_HOST or REQUEST_METHOD, it's likely internal
-            if (empty($_SERVER['HTTP_HOST']) || empty($_SERVER['REQUEST_METHOD'])) {
-                error_log('WPOllama - Detected as internal via REST_REQUEST without HTTP vars');
-                return true;
+        // Method 1: Check for registered service token
+        // This is the cleanest way for service-to-service auth
+        $service_token = $request->get_header('X-WPOllama-Service-Token');
+        if ($service_token) {
+            error_log('WPOllama - Service token found, verifying...');
+            // Verify the token matches a registered service
+            $registered_services = get_option('wpollama_registered_services', []);
+            foreach ($registered_services as $service_id => $service_data) {
+                $expected_token = wp_hash('wpollama_service_' . $service_id . '_' . get_site_url());
+                if (hash_equals($expected_token, $service_token)) {
+                    error_log('WPOllama - Valid service token for: ' . $service_id);
+                    return true;
+                }
             }
         }
         
-        // Method 2: Check for WordPress plugin header
+        // Method 2: Check for WordPress plugin header with verification
         $plugin_header = $request->get_header('X-WPOllama-Plugin');
         if ($plugin_header) {
             error_log('WPOllama - Plugin header found: ' . $plugin_header);
-            // For now, accept any plugin that identifies itself
-            // Later we can check against registered plugins
-            return true;
+            // Verify this is a registered plugin
+            $manager = \OllamaPress\PluginManager::getInstance();
+            if ($manager->hasService($plugin_header)) {
+                error_log('WPOllama - Registered plugin verified: ' . $plugin_header);
+                return true;
+            }
         }
         
         // Method 3: Check for valid WordPress nonce (internal AJAX)
