@@ -112,12 +112,19 @@ class RestAPIController extends WP_REST_Controller
      */
     public function permissions_read($request)
     {
-        // Check if external access is allowed
+        // Check if this is an internal WordPress request (from another plugin)
+        $is_internal = $this->is_internal_request($request);
+        
+        if ($is_internal) {
+            // Always allow internal WordPress plugin requests
+            return true;
+        }
+        
+        // For external requests, check if external access is allowed
         $allow_external = get_option('ollama_allow_external_access', false);
         
-        // If external access is disabled, require authentication
         if (!$allow_external) {
-            // Require user to be logged in
+            // External access disabled, require authentication
             if (!is_user_logged_in()) {
                 return new WP_Error(
                     'rest_forbidden',
@@ -151,6 +158,43 @@ class RestAPIController extends WP_REST_Controller
         }
         
         return true;
+    }
+    
+    /**
+     * Check if this is an internal WordPress request
+     * 
+     * @param \WP_REST_Request $request
+     * @return bool
+     */
+    private function is_internal_request($request): bool
+    {
+        // Method 1: Check if request is made via rest_do_request() (internal)
+        if (defined('REST_REQUEST') && REST_REQUEST === true && !isset($_SERVER['HTTP_HOST'])) {
+            return true;
+        }
+        
+        // Method 2: Check for internal nonce or specific headers
+        $nonce = $request->get_header('X-WP-Nonce');
+        if ($nonce && wp_verify_nonce($nonce, 'wp_rest')) {
+            return true;
+        }
+        
+        // Method 3: Check if called from within WordPress execution context
+        // without HTTP request (typical for rest_do_request())
+        if (empty($_SERVER['REQUEST_METHOD']) && defined('ABSPATH')) {
+            return true;
+        }
+        
+        // Method 4: Check for registered plugin service
+        $plugin_header = $request->get_header('X-WPOllama-Plugin');
+        if ($plugin_header) {
+            $manager = \OllamaPress\PluginManager::getInstance();
+            if ($manager->hasService($plugin_header)) {
+                return true;
+            }
+        }
+        
+        return false;
     }
 
     /**
