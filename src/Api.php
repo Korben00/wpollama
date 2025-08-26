@@ -107,18 +107,47 @@ class RestAPIController extends WP_REST_Controller
     }
 
     /**
-     * Check if user is logged in.
+     * Check if user is logged in or if external access is allowed.
      * Following WordPress security best practices.
      */
     public function permissions_read($request)
     {
-        // Require user to be logged in
-        if (!is_user_logged_in()) {
-            return new WP_Error(
-                'rest_forbidden',
-                esc_html__('You must be logged in to access this resource.', 'ollamapress'),
-                ['status' => 401]
-            );
+        // Check if external access is allowed
+        $allow_external = get_option('ollama_allow_external_access', false);
+        
+        // If external access is disabled, require authentication
+        if (!$allow_external) {
+            // Require user to be logged in
+            if (!is_user_logged_in()) {
+                return new WP_Error(
+                    'rest_forbidden',
+                    esc_html__('You must be logged in to access this resource. External access is disabled.', 'ollamapress'),
+                    ['status' => 401]
+                );
+            }
+        } else {
+            // External access is allowed, check origin restrictions
+            $allowed_origins = get_option('ollama_allowed_origins', '');
+            if (!empty($allowed_origins)) {
+                $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+                $allowed_list = array_map('trim', explode("\n", $allowed_origins));
+                
+                if (!empty($origin) && !in_array($origin, $allowed_list, true)) {
+                    return new WP_Error(
+                        'rest_forbidden_origin',
+                        esc_html__('Access from this origin is not allowed.', 'ollamapress'),
+                        ['status' => 403]
+                    );
+                }
+            }
+            
+            // Apply rate limiting if enabled
+            if (get_option('ollama_rate_limit_enabled', true)) {
+                $rate_check = $this->check_rate_limit($request);
+                if (is_wp_error($rate_check)) {
+                    return $rate_check;
+                }
+            }
         }
         
         return true;
@@ -126,12 +155,61 @@ class RestAPIController extends WP_REST_Controller
 
     /**
      * Check if the current user is an admin.
+     * Management endpoints should never be accessible externally.
      */
     public function permissions_manage($request)
     {
-        if (!current_user_can('manage_options')) {
-            return new WP_Error('rest_forbidden', esc_html__('You cannot access this resource.', 'ollamapress'), ['status' => 401]);
+        // Management operations require authentication regardless of external access settings
+        if (!is_user_logged_in()) {
+            return new WP_Error(
+                'rest_forbidden',
+                esc_html__('Authentication required for management operations.', 'ollamapress'),
+                ['status' => 401]
+            );
         }
+        
+        if (!current_user_can('manage_options')) {
+            return new WP_Error(
+                'rest_forbidden',
+                esc_html__('Administrator privileges required.', 'ollamapress'),
+                ['status' => 403]
+            );
+        }
+        
+        return true;
+    }
+
+    /**
+     * Check rate limit for API requests
+     * 
+     * @param \WP_REST_Request $request
+     * @return bool|WP_Error
+     */
+    private function check_rate_limit($request)
+    {
+        $user_identifier = is_user_logged_in() ? 'user_' . get_current_user_id() : 'ip_' . $_SERVER['REMOTE_ADDR'];
+        $transient_key = 'ollama_rate_limit_' . md5($user_identifier);
+        
+        // Get current request count
+        $requests = get_transient($transient_key);
+        
+        if ($requests === false) {
+            // First request within the time window
+            set_transient($transient_key, 1, 60); // 60 seconds window
+            return true;
+        }
+        
+        // Check if limit exceeded (60 requests per minute)
+        if ($requests >= 60) {
+            return new WP_Error(
+                'rate_limit_exceeded',
+                esc_html__('Rate limit exceeded. Please try again later.', 'ollamapress'),
+                ['status' => 429]
+            );
+        }
+        
+        // Increment counter
+        set_transient($transient_key, $requests + 1, 60);
         return true;
     }
 

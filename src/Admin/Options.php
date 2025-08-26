@@ -40,6 +40,44 @@ class Options
         echo '</tr>';
         echo '</table>';
 
+        // Security Settings
+        echo '<h2>Security Settings</h2>';
+        echo '<table class="form-table">';
+        echo '<tr>';
+        echo '<th scope="row">External Access</th>';
+        echo '<td>';
+        echo '<label>';
+        $allow_external = get_option('ollama_allow_external_access', false);
+        echo '<input type="checkbox" name="ollama_allow_external_access" value="1" ' . checked($allow_external, true, false) . ' />';
+        echo ' Allow external access to Ollama API (Not recommended)';
+        echo '</label>';
+        echo '<p class="description">⚠️ <strong>Security Warning:</strong> Enabling this allows external applications to directly access your Ollama instance. This should only be enabled for development or if you have proper security measures in place.</p>';
+        echo '<p class="description">When disabled (default), only authenticated WordPress users and registered plugins can access Ollama through the WordPress REST API.</p>';
+        echo '</td>';
+        echo '</tr>';
+        
+        echo '<tr>';
+        echo '<th scope="row">Allowed Origins</th>';
+        echo '<td>';
+        $allowed_origins = get_option('ollama_allowed_origins', '');
+        echo '<textarea name="ollama_allowed_origins" rows="4" cols="50" class="regular-text" placeholder="http://localhost:3000' . "\n" . 'https://trusted-site.com">' . esc_textarea($allowed_origins) . '</textarea>';
+        echo '<p class="description">One origin per line. Only applies if external access is enabled. Leave empty to allow all origins (not recommended).</p>';
+        echo '</td>';
+        echo '</tr>';
+        
+        echo '<tr>';
+        echo '<th scope="row">API Rate Limiting</th>';
+        echo '<td>';
+        echo '<label>';
+        $rate_limit = get_option('ollama_rate_limit_enabled', true);
+        echo '<input type="checkbox" name="ollama_rate_limit_enabled" value="1" ' . checked($rate_limit, true, false) . ' />';
+        echo ' Enable rate limiting for API requests';
+        echo '</label>';
+        echo '<p class="description">Limits requests to 60 per minute per user to prevent abuse.</p>';
+        echo '</td>';
+        echo '</tr>';
+        echo '</table>';
+
         echo '<p class="submit">';
         echo '<button type="submit" class="button-primary">Save Changes</button>';
         echo '</p>';
@@ -60,6 +98,11 @@ class Options
         if (!defined('OLLAMA_TIMEOUT')) {
             update_option('ollama_timeout', (int) ($_POST['ollama_timeout'] ?? 30));
         }
+
+        // Save security settings
+        update_option('ollama_allow_external_access', isset($_POST['ollama_allow_external_access']) ? 1 : 0);
+        update_option('ollama_allowed_origins', sanitize_textarea_field($_POST['ollama_allowed_origins'] ?? ''));
+        update_option('ollama_rate_limit_enabled', isset($_POST['ollama_rate_limit_enabled']) ? 1 : 0);
 
         add_action('admin_notices', function () {
             echo '<div class="updated notice"><p>Settings saved successfully.</p></div>';
