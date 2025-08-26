@@ -39,7 +39,7 @@ class Client
     public function generate(string $prompt, array $options = []): array
     {
         $defaults = [
-            'model' => get_option('wpollama_default_model', 'llama3.2'),
+            'model' => get_option('wpollama_default_model', 'qwen3:latest'),
             'stream' => false,
             'options' => [
                 'temperature' => 0.7,
@@ -59,7 +59,7 @@ class Client
     public function chat(array $messages, array $options = []): array
     {
         $defaults = [
-            'model' => get_option('wpollama_default_model', 'llama3.2'),
+            'model' => get_option('wpollama_default_model', 'qwen3:latest'),
             'stream' => false
         ];
         
@@ -117,14 +117,29 @@ class Client
             ];
         }
         
+        $code = wp_remote_retrieve_response_code($response);
+        if ($code !== 200) {
+            return [
+                'error' => true,
+                'message' => 'HTTP error ' . $code
+            ];
+        }
+        
         $body = wp_remote_retrieve_body($response);
         $data = json_decode($body, true);
         
         if (json_last_error() !== JSON_ERROR_NONE) {
             return [
                 'error' => true,
-                'message' => 'Invalid JSON response'
+                'message' => 'Invalid JSON response',
+                'raw' => $body
             ];
+        }
+        
+        // Nettoyer les think tags si présentes (pour qwen3 et autres)
+        if (isset($data['response']) && strpos($data['response'], '<think>') !== false) {
+            $data['response'] = preg_replace('/<think>.*?<\/think>/s', '', $data['response']);
+            $data['response'] = trim($data['response']);
         }
         
         return $data ?: [];
@@ -344,7 +359,7 @@ add_action('init', function() {
 register_activation_hook(__FILE__, function() {
     add_option('wpollama_url', 'http://localhost:11434/api');
     add_option('wpollama_timeout', 30);
-    add_option('wpollama_default_model', 'llama3.2');
+    add_option('wpollama_default_model', 'qwen3:latest');
 });
 
 register_deactivation_hook(__FILE__, function() {
