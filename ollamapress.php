@@ -18,14 +18,16 @@ defined('ABSPATH') || exit;
  * Include the necessary files.
  */
 require_once __DIR__ . '/src/Api.php';
+require_once __DIR__ . '/src/PluginManager.php';
+require_once __DIR__ . '/src/ExtensibleApi.php';
 require_once __DIR__ . '/src/Admin/Options.php';
 
 /**
- * Initialize REST API routes.
+ * Initialize REST API routes with extensibility support.
  */
 function ollama_press_init(): void
 {
-    $controller = new RestAPIController();
+    $controller = new ExtensibleApi();
     $controller->register_routes();
 }
 add_action('rest_api_init', __NAMESPACE__ . '\ollama_press_init');
@@ -54,3 +56,29 @@ add_action('admin_init', function () {
     $options = new Options();
     $options->saveSettings();
 });
+
+/**
+ * Helper function for other plugins to register with WPOllama
+ */
+function ollamapress_register_service(string $service_id, array $config): bool
+{
+    $manager = \OllamaPress\PluginManager::getInstance();
+    return $manager->registerService($service_id, $config);
+}
+
+/**
+ * Helper function to check if a service is registered
+ */
+function ollamapress_has_service(string $service_id): bool
+{
+    $manager = \OllamaPress\PluginManager::getInstance();
+    return $manager->hasService($service_id);
+}
+
+/**
+ * Helper function to get plugin manager instance
+ */
+function ollamapress_get_manager(): \OllamaPress\PluginManager
+{
+    return \OllamaPress\PluginManager::getInstance();
+}
