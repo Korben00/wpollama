@@ -16,12 +16,22 @@ class RestAPIController extends WP_REST_Controller
 {
     private string $url;
     private int $timeout;
+    
+    /**
+     * Allowed models for security - can be configured via filter
+     * @var array
+     */
+    private array $allowed_models;
 
     public function __construct()
     {
         $this->namespace = 'ollama/v1';
         $this->url = defined('OLLAMA_URL') ? OLLAMA_URL : get_option('ollama_url', 'http://localhost:11434/api');
         $this->timeout = defined('OLLAMA_TIMEOUT') ? OLLAMA_TIMEOUT : (int) get_option('ollama_timeout', 30);
+        
+        // Default allowed models - can be filtered by themes/plugins
+        $default_models = ['llama3.2', 'llama2', 'codellama', 'mistral', 'phi', 'gemma'];
+        $this->allowed_models = apply_filters('ollamapress_allowed_models', $default_models);
     }
 
     /**
@@ -126,6 +136,35 @@ class RestAPIController extends WP_REST_Controller
     }
 
     /**
+     * Validate if the requested model is allowed.
+     * 
+     * @param string $model The model name to validate
+     * @return bool|WP_Error True if allowed, WP_Error if not
+     */
+    private function validate_model(string $model)
+    {
+        // Allow admins to bypass model restrictions
+        if (current_user_can('manage_options')) {
+            return true;
+        }
+        
+        // Check if model is in allowed list
+        if (!in_array($model, $this->allowed_models, true)) {
+            return new WP_Error(
+                'invalid_model',
+                sprintf(
+                    esc_html__('Model "%s" is not allowed. Allowed models: %s', 'ollamapress'),
+                    $model,
+                    implode(', ', $this->allowed_models)
+                ),
+                ['status' => 403]
+            );
+        }
+        
+        return true;
+    }
+
+    /**
      * Handle Generate Completion request.
      */
     public function generate_completion(\WP_REST_Request $request): \WP_REST_Response
@@ -133,7 +172,15 @@ class RestAPIController extends WP_REST_Controller
         $body = [];
 
         if ($model = $request->get_param('model')) {
-            $body['model'] = (string) $model;
+            $model_name = (string) $model;
+            
+            // Validate model
+            $validation = $this->validate_model($model_name);
+            if (is_wp_error($validation)) {
+                return rest_ensure_response($validation);
+            }
+            
+            $body['model'] = $model_name;
         } else {
             $body['model'] = 'default-model'; // Fallback default
         }
@@ -198,7 +245,15 @@ class RestAPIController extends WP_REST_Controller
         $body = [];
 
         if ($model = $request->get_param('model')) {
-            $body['model'] = (string) $model;
+            $model_name = (string) $model;
+            
+            // Validate model
+            $validation = $this->validate_model($model_name);
+            if (is_wp_error($validation)) {
+                return rest_ensure_response($validation);
+            }
+            
+            $body['model'] = $model_name;
         } else {
             $body['model'] = 'default-model'; // Fallback default
         }
@@ -339,7 +394,15 @@ class RestAPIController extends WP_REST_Controller
         $body = [];
 
         if ($model = $request->get_param('model')) {
-            $body['model'] = (string) $model;
+            $model_name = (string) $model;
+            
+            // Validate model
+            $validation = $this->validate_model($model_name);
+            if (is_wp_error($validation)) {
+                return rest_ensure_response($validation);
+            }
+            
+            $body['model'] = $model_name;
         }
 
         if ($input = $request->get_param('input')) {
