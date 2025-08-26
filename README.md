@@ -63,6 +63,10 @@ OllamaPress exposes the following WordPress REST API endpoints (namespace: `olla
 
 ## Usage Examples
 
+### Authentication Required
+
+⚠️ **All endpoints now require user authentication**. You need to be logged into WordPress to access the API.
+
 ### Generate Text
 
 ```php
@@ -101,6 +105,93 @@ $response = wp_remote_post(rest_url('ollama/v1/embed'), [
     ]),
     'headers' => ['Content-Type' => 'application/json'],
 ]);
+```
+
+## cURL Authentication Examples
+
+### Method 1: Application Passwords (Recommended)
+
+First, create an Application Password in WordPress Admin → Users → Your Profile → Application Passwords.
+
+```bash
+# List available models
+curl -u "username:xxxx xxxx xxxx xxxx xxxx xxxx" \
+     https://yoursite.com/wp-json/ollama/v1/models
+
+# Generate text
+curl -u "username:xxxx xxxx xxxx xxxx xxxx xxxx" \
+     -H "Content-Type: application/json" \
+     -X POST \
+     -d '{"model": "llama2", "prompt": "Hello, how are you?", "stream": false}' \
+     https://yoursite.com/wp-json/ollama/v1/generate
+
+# Chat interaction  
+curl -u "username:xxxx xxxx xxxx xxxx xxxx xxxx" \
+     -H "Content-Type: application/json" \
+     -X POST \
+     -d '{"model": "llama2", "messages": [{"role": "user", "content": "What is AI?"}], "stream": false}' \
+     https://yoursite.com/wp-json/ollama/v1/chat
+```
+
+### Method 2: Cookie Authentication
+
+```bash
+# First, login to get cookies
+curl -c cookies.txt \
+     -d "log=your-username&pwd=your-password&wp-submit=Log%20In&redirect_to=https://yoursite.com/wp-admin/&testcookie=1" \
+     https://yoursite.com/wp-login.php
+
+# Then use the cookie for API calls
+curl -b cookies.txt \
+     https://yoursite.com/wp-json/ollama/v1/models
+
+curl -b cookies.txt \
+     -H "Content-Type: application/json" \
+     -X POST \
+     -d '{"model": "llama2", "prompt": "Hello!"}' \
+     https://yoursite.com/wp-json/ollama/v1/generate
+```
+
+### Method 3: JWT Token (Requires JWT Plugin)
+
+If you have a JWT authentication plugin installed:
+
+```bash
+# Get JWT token
+TOKEN=$(curl -X POST https://yoursite.com/wp-json/jwt-auth/v1/token \
+     -H "Content-Type: application/json" \
+     -d '{"username": "your-username", "password": "your-password"}' \
+     | jq -r '.token')
+
+# Use token for API calls
+curl -H "Authorization: Bearer $TOKEN" \
+     https://yoursite.com/wp-json/ollama/v1/models
+
+curl -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -X POST \
+     -d '{"model": "llama2", "prompt": "Hello!"}' \
+     https://yoursite.com/wp-json/ollama/v1/generate
+```
+
+### JavaScript/AJAX from WordPress Frontend
+
+```javascript
+// If user is logged in to WordPress, this will work automatically
+fetch('/wp-json/ollama/v1/generate', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'X-WP-Nonce': wpApiSettings.nonce // WordPress nonce
+    },
+    body: JSON.stringify({
+        model: 'llama2',
+        prompt: 'Hello from JavaScript!',
+        stream: false
+    })
+})
+.then(response => response.json())
+.then(data => console.log(data));
 ```
 
 ## Security
